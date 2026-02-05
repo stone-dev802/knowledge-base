@@ -1,0 +1,3072 @@
+bon je voudrai que lorsqu'on active le thème sombre qui se trouve dans la page setting.tsx ci dessous on puisse avoir ce thème dans les autre pages comme acceuil.tsx 
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  SafeAreaView,
+  ScrollView,
+  View,
+  Text,
+  StyleSheet,
+  Switch,
+  TouchableOpacity,
+  Alert,
+  Linking,
+  Platform,
+  StatusBar,
+  Dimensions,
+  Modal,
+  Animated,
+  TextInput,
+  Image,
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useRouter } from 'expo-router';
+import * as Notifications from 'expo-notifications';
+import { useFocusEffect } from 'expo-router';
+import Slider from "@react-native-community/slider";
+
+// Constantes de thème
+const THEMES = {
+  light: {
+    primary: '#FF6B00',
+    secondary: '#FF8F42',
+    background: '#FFFFFF',
+    surface: '#F8F9FA',
+    card: '#FFFFFF',
+    text: '#1A1A1A',
+    textSecondary: '#6B7280',
+    border: '#E5E7EB',
+    success: '#10B981',
+    error: '#EF4444',
+    warning: '#F59E0B',
+    info: '#3B82F6',
+    accent: '#8B5CF6',
+  },
+  dark: {
+    primary: '#FF7A1A',
+    secondary: '#FFA552',
+    background: '#0F0F0F',
+    surface: '#1A1A1A',
+    card: '#262626',
+    text: '#FFFFFF',
+    textSecondary: '#9CA3AF',
+    border: '#374151',
+    success: '#34D399',
+    error: '#F87171',
+    warning: '#FBBF24',
+    info: '#60A5FA',
+    accent: '#A78BFA',
+  },
+  blue: {
+    primary: '#3B82F6',
+    secondary: '#60A5FA',
+    background: '#F0F9FF',
+    surface: '#E0F2FE',
+    card: '#FFFFFF',
+    text: '#1E293B',
+    textSecondary: '#64748B',
+    border: '#CBD5E1',
+    success: '#10B981',
+    error: '#EF4444',
+    warning: '#F59E0B',
+    info: '#3B82F6',
+    accent: '#8B5CF6',
+  },
+  green: {
+    primary: '#10B981',
+    secondary: '#34D399',
+    background: '#F0FDF4',
+    surface: '#DCFCE7',
+    card: '#FFFFFF',
+    text: '#14532D',
+    textSecondary: '#16A34A',
+    border: '#BBF7D0',
+    success: '#10B981',
+    error: '#EF4444',
+    warning: '#F59E0B',
+    info: '#3B82F6',
+    accent: '#8B5CF6',
+  },
+  purple: {
+    primary: '#8B5CF6',
+    secondary: '#A78BFA',
+    background: '#FAF5FF',
+    surface: '#F3E8FF',
+    card: '#FFFFFF',
+    text: '#581C87',
+    textSecondary: '#7C3AED',
+    border: '#DDD6FE',
+    success: '#10B981',
+    error: '#EF4444',
+    warning: '#F59E0B',
+    info: '#3B82F6',
+    accent: '#8B5CF6',
+  },
+};
+
+type ThemeName = keyof typeof THEMES;
+type Theme = typeof THEMES.light;
+
+interface SettingsState {
+  currentTheme: ThemeName;
+  notificationsEnabled: boolean;
+  soundEnabled: boolean;
+  vibrationEnabled: boolean;
+  fontSize: number;
+  language: string;
+  autoUpdates: boolean;
+  dataCollection: boolean;
+  locationServices: boolean;
+  biometricAuth: boolean;
+  twoFactorAuth: boolean;
+  darkModeAuto: boolean;
+  highContrast: boolean;
+  reduceMotion: boolean;
+  userRole: 'admin' | 'client' | null;
+}
+
+export default function Settings() {
+  const [settings, setSettings] = useState<SettingsState>({
+    currentTheme: 'light',
+    notificationsEnabled: false,
+    soundEnabled: true,
+    vibrationEnabled: true,
+    fontSize: 16,
+    language: 'fr',
+    autoUpdates: true,
+    dataCollection: true,
+    locationServices: false,
+    biometricAuth: false,
+    twoFactorAuth: false,
+    darkModeAuto: false,
+    highContrast: false,
+    reduceMotion: false,
+    userRole: null,
+  });
+
+  const [showThemeModal, setShowThemeModal] = useState(false);
+  const [showLanguageModal, setShowLanguageModal] = useState(false);
+  const [showFontModal, setShowFontModal] = useState(false);
+  const [slideAnim] = useState(new Animated.Value(0));
+  const router = useRouter();
+
+  const currentTheme: Theme = THEMES[settings.currentTheme];
+
+  // Charger les paramètres
+  useEffect(() => {
+    loadSettings();
+  }, []);
+
+  // Sauvegarder les paramètres quand ils changent
+  useEffect(() => {
+    saveSettings();
+  }, [settings]);
+
+  useFocusEffect(
+    useCallback(() => {
+      StatusBar.setBarStyle(
+        settings.currentTheme === 'dark' ? 'light-content' : 'dark-content'
+      );
+      if (Platform.OS === 'android') {
+        StatusBar.setBackgroundColor(currentTheme.surface, true);
+      }
+    }, [settings.currentTheme, currentTheme])
+  );
+
+  const loadSettings = async () => {
+    try {
+      const savedSettings = await AsyncStorage.getItem('app_settings');
+      if (savedSettings) {
+        const parsed = JSON.parse(savedSettings);
+        setSettings(prev => ({ ...prev, ...parsed }));
+      }
+
+      // Charger le rôle utilisateur
+      const role = await AsyncStorage.getItem('user_role');
+      setSettings(prev => ({
+        ...prev,
+        userRole: role === 'admin' ? 'admin' : 'client',
+      }));
+    } catch (error) {
+      console.error('Erreur lors du chargement des paramètres:', error);
+    }
+  };
+
+  const saveSettings = async () => {
+    try {
+      await AsyncStorage.setItem('app_settings', JSON.stringify(settings));
+      // Sauvegarder le thème séparément pour un accès rapide
+      await AsyncStorage.setItem('current_theme', settings.currentTheme);
+    } catch (error) {
+      console.error('Erreur lors de la sauvegarde des paramètres:', error);
+    }
+  };
+
+  const updateSetting = <K extends keyof SettingsState>(
+    key: K,
+    value: SettingsState[K]
+  ) => {
+    setSettings(prev => ({ ...prev, [key]: value }));
+  };
+
+  const askNotificationPermission = async () => {
+    if (Platform.OS === 'web') return false;
+    const { status } = await Notifications.requestPermissionsAsync();
+    return status === 'granted';
+  };
+
+  const registerForPushNotifications = async () => {
+    if (Platform.OS === 'web') return;
+    try {
+      const token = (await Notifications.getExpoPushTokenAsync()).data;
+      console.log('Expo Push Token:', token);
+    } catch (error) {
+      console.error('Erreur token:', error);
+    }
+  };
+
+  const toggleNotifications = async (value: boolean) => {
+    if (value) {
+      const granted = await askNotificationPermission();
+      if (!granted) {
+        Alert.alert('Permission refusée', 'Vous devez autoriser les notifications.');
+        return;
+      }
+      await registerForPushNotifications();
+    }
+    updateSetting('notificationsEnabled', value);
+  };
+
+  const handleThemeChange = (theme: ThemeName) => {
+    updateSetting('currentTheme', theme);
+    setShowThemeModal(false);
+    
+    // Animation de transition
+    Animated.timing(slideAnim, {
+      toValue: 1,
+      duration: 300,
+      useNativeDriver: true,
+    }).start(() => {
+      slideAnim.setValue(0);
+    });
+  };
+
+  const handleLogout = async () => {
+    const confirm = Platform.OS === 'web'
+      ? window.confirm('Voulez-vous vraiment vous déconnecter ?')
+      : await new Promise<boolean>(resolve => {
+          Alert.alert(
+            'Déconnexion',
+            'Voulez-vous vraiment vous déconnecter ?',
+            [
+              { text: 'Annuler', style: 'cancel', onPress: () => resolve(false) },
+              { text: 'Déconnexion', style: 'destructive', onPress: () => resolve(true) },
+            ],
+            { cancelable: true }
+          );
+        });
+
+    if (confirm) {
+      await AsyncStorage.clear();
+      router.replace('/Connexion');
+    }
+  };
+
+  const openUrl = (url: string) => {
+    Linking.openURL(url).catch(() => {
+      Alert.alert('Erreur', "Impossible d'ouvrir le lien");
+    });
+  };
+
+  const styles = createStyles(currentTheme);
+
+  return (
+    <SafeAreaView style={styles.container}>
+      <StatusBar
+        barStyle={settings.currentTheme === 'dark' ? 'light-content' : 'dark-content'}
+        backgroundColor={currentTheme.surface}
+      />
+      
+      {/* Header */}
+      <View style={styles.header}>
+        <TouchableOpacity 
+          onPress={() => router.back()}
+          style={styles.backButton}
+        >
+          <Ionicons name="arrow-back" size={24} color={currentTheme.text} />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Paramètres</Text>
+        <View style={styles.headerRight} />
+      </View>
+
+      <ScrollView 
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Section Profil */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Profil</Text>
+          <View style={styles.card}>
+            <SettingsItem
+              title="Modifier mes informations"
+              subtitle="Nom, email, téléphone"
+              onPress={() => router.push('/edit-profile')}
+              icon="person-outline"
+              theme={currentTheme}
+            />
+            <Separator theme={currentTheme} />
+            <SettingsItem
+              title="Changer le mot de passe"
+              subtitle="Sécurité du compte"
+              onPress={() => router.push('/change-password')}
+              icon="lock-closed-outline"
+              theme={currentTheme}
+            />
+            <Separator theme={currentTheme} />
+            <SettingsItem
+              title="Authentification biométrique"
+              subtitle="Empreinte digitale, Face ID"
+              icon="finger-print-outline"
+              theme={currentTheme}
+              rightComponent={
+                <Switch
+                  value={settings.biometricAuth}
+                  onValueChange={(value) => updateSetting('biometricAuth', value)}
+                  trackColor={{ false: currentTheme.border, true: currentTheme.primary }}
+                  thumbColor={settings.biometricAuth ? '#fff' : '#f4f3f4'}
+                />
+              }
+            />
+          </View>
+        </View>
+
+        {/* Section Apparence */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Apparence</Text>
+          <View style={styles.card}>
+            <SettingsItem
+              title="Thème"
+              subtitle={getThemeLabel(settings.currentTheme)}
+              onPress={() => setShowThemeModal(true)}
+              icon="color-palette-outline"
+              theme={currentTheme}
+            />
+            <Separator theme={currentTheme} />
+            <SettingsItem
+              title="Taille de police"
+              subtitle={`${settings.fontSize}px`}
+              onPress={() => setShowFontModal(true)}
+              icon="text-outline"
+              theme={currentTheme}
+            />
+            <Separator theme={currentTheme} />
+            <SettingsItem
+              title="Contraste élevé"
+              subtitle="Améliore la lisibilité"
+              icon="contrast-outline"
+              theme={currentTheme}
+              rightComponent={
+                <Switch
+                  value={settings.highContrast}
+                  onValueChange={(value) => updateSetting('highContrast', value)}
+                  trackColor={{ false: currentTheme.border, true: currentTheme.primary }}
+                  thumbColor={settings.highContrast ? '#fff' : '#f4f3f4'}
+                />
+              }
+            />
+            <Separator theme={currentTheme} />
+            <SettingsItem
+              title="Réduire les animations"
+              subtitle="Performances améliorées"
+              icon="pulse-outline"
+              theme={currentTheme}
+              rightComponent={
+                <Switch
+                  value={settings.reduceMotion}
+                  onValueChange={(value) => updateSetting('reduceMotion', value)}
+                  trackColor={{ false: currentTheme.border, true: currentTheme.primary }}
+                  thumbColor={settings.reduceMotion ? '#fff' : '#f4f3f4'}
+                />
+              }
+            />
+          </View>
+        </View>
+
+        {/* Section Notifications */}
+        {Platform.OS !== 'web' && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Notifications</Text>
+            <View style={styles.card}>
+              <SettingsItem
+                title="Notifications push"
+                subtitle="Formations, promotions"
+                icon="notifications-outline"
+                theme={currentTheme}
+                rightComponent={
+                  <Switch
+                    value={settings.notificationsEnabled}
+                    onValueChange={toggleNotifications}
+                    trackColor={{ false: currentTheme.border, true: currentTheme.primary }}
+                    thumbColor={settings.notificationsEnabled ? '#fff' : '#f4f3f4'}
+                  />
+                }
+              />
+              <Separator theme={currentTheme} />
+              <SettingsItem
+                title="Sons"
+                subtitle="Sons de notification"
+                icon="volume-medium-outline"
+                theme={currentTheme}
+                rightComponent={
+                  <Switch
+                    value={settings.soundEnabled}
+                    onValueChange={(value) => updateSetting('soundEnabled', value)}
+                    trackColor={{ false: currentTheme.border, true: currentTheme.primary }}
+                    thumbColor={settings.soundEnabled ? '#fff' : '#f4f3f4'}
+                  />
+                }
+              />
+              <Separator theme={currentTheme} />
+              <SettingsItem
+                title="Vibrations"
+                subtitle="Retour haptique"
+                icon="phone-portrait-outline"
+                theme={currentTheme}
+                rightComponent={
+                  <Switch
+                    value={settings.vibrationEnabled}
+                    onValueChange={(value) => updateSetting('vibrationEnabled', value)}
+                    trackColor={{ false: currentTheme.border, true: currentTheme.primary }}
+                    thumbColor={settings.vibrationEnabled ? '#fff' : '#f4f3f4'}
+                  />
+                }
+              />
+            </View>
+          </View>
+        )}
+
+        {/* Section Général */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Général</Text>
+          <View style={styles.card}>
+            <SettingsItem
+              title="Langue"
+              subtitle="Français"
+              onPress={() => setShowLanguageModal(true)}
+              icon="language-outline"
+              theme={currentTheme}
+            />
+            <Separator theme={currentTheme} />
+            <SettingsItem
+              title="Mises à jour automatiques"
+              subtitle="Télécharger automatiquement"
+              icon="download-outline"
+              theme={currentTheme}
+              rightComponent={
+                <Switch
+                  value={settings.autoUpdates}
+                  onValueChange={(value) => updateSetting('autoUpdates', value)}
+                  trackColor={{ false: currentTheme.border, true: currentTheme.primary }}
+                  thumbColor={settings.autoUpdates ? '#fff' : '#f4f3f4'}
+                />
+              }
+            />
+          </View>
+        </View>
+
+        {/* Section Paiements (Client uniquement) */}
+        {settings.userRole === 'client' && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Paiements</Text>
+            <View style={styles.card}>
+              <SettingsItem
+                title="Historique des achats"
+                subtitle="Voir tous vos achats"
+                onPress={() => router.push('/achat-history')}
+                icon="receipt-outline"
+                theme={currentTheme}
+              />
+              <Separator theme={currentTheme} />
+              <SettingsItem
+                title="Historique des paiements"
+                subtitle="Transactions effectuées"
+                onPress={() => router.push('/payment-history')}
+                icon="card-outline"
+                theme={currentTheme}
+              />
+              <Separator theme={currentTheme} />
+              <SettingsItem
+                title="Méthodes de paiement"
+                subtitle="Cartes et comptes"
+                onPress={() => router.push('./payment-methods')}
+                icon="wallet-outline"
+                theme={currentTheme}
+              />
+            </View>
+          </View>
+        )}
+
+        {/* Section Administration (Admin uniquement) */}
+        {settings.userRole === 'admin' && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Administration</Text>
+            <View style={styles.card}>
+              <SettingsItem
+                title="Gérer les utilisateurs"
+                subtitle="Clients et permissions"
+                onPress={() => router.push('/Gestionclient')}
+                icon="people-outline"
+                theme={currentTheme}
+              />
+              <Separator theme={currentTheme} />
+              <SettingsItem
+                title="Statistiques"
+                subtitle="Analytics et rapports"
+                onPress={() => router.push('/admin/statistiques')}
+                icon="bar-chart-outline"
+                theme={currentTheme}
+              />
+              <Separator theme={currentTheme} />
+              <SettingsItem
+                title="Ajouter du contenu"
+                subtitle="Vidéos et formations"
+                onPress={() => router.push('/AjouterVideo')}
+                icon="add-circle-outline"
+                theme={currentTheme}
+              />
+            </View>
+          </View>
+        )}
+
+        {/* Section Confidentialité */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Confidentialité et sécurité</Text>
+          <View style={styles.card}>
+            <SettingsItem
+              title="Services de localisation"
+              subtitle="Partager votre position"
+              icon="location-outline"
+              theme={currentTheme}
+              rightComponent={
+                <Switch
+                  value={settings.locationServices}
+                  onValueChange={(value) => updateSetting('locationServices', value)}
+                  trackColor={{ false: currentTheme.border, true: currentTheme.primary }}
+                  thumbColor={settings.locationServices ? '#fff' : '#f4f3f4'}
+                />
+              }
+            />
+            <Separator theme={currentTheme} />
+            <SettingsItem
+              title="Collecte de données"
+              subtitle="Analytics anonymes"
+              icon="analytics-outline"
+              theme={currentTheme}
+              rightComponent={
+                <Switch
+                  value={settings.dataCollection}
+                  onValueChange={(value) => updateSetting('dataCollection', value)}
+                  trackColor={{ false: currentTheme.border, true: currentTheme.primary }}
+                  thumbColor={settings.dataCollection ? '#fff' : '#f4f3f4'}
+                />
+              }
+            />
+            <Separator theme={currentTheme} />
+            <SettingsItem
+              title="Authentification à deux facteurs"
+              subtitle="Sécurité renforcée"
+              icon="shield-checkmark-outline"
+              theme={currentTheme}
+              rightComponent={
+                <Switch
+                  value={settings.twoFactorAuth}
+                  onValueChange={(value) => updateSetting('twoFactorAuth', value)}
+                  trackColor={{ false: currentTheme.border, true: currentTheme.primary }}
+                  thumbColor={settings.twoFactorAuth ? '#fff' : '#f4f3f4'}
+                />
+              }
+            />
+          </View>
+        </View>
+
+        {/* Section Support */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Support</Text>
+          <View style={styles.card}>
+            <SettingsItem
+              title="Centre d'aide"
+              subtitle="FAQ et guides"
+              onPress={() => openUrl('https://tonsite.com/aide')}
+              icon="help-circle-outline"
+              theme={currentTheme}
+            />
+            <Separator theme={currentTheme} />
+            <SettingsItem
+              title="Contacter le support"
+              subtitle="Assistance technique"
+              onPress={() => openUrl('https://tonsite.com/support')}
+              icon="chatbubble-ellipses-outline"
+              theme={currentTheme}
+            />
+            <Separator theme={currentTheme} />
+            <SettingsItem
+              title="Signaler un problème"
+              subtitle="Bugs et suggestions"
+              onPress={() => openUrl('https://tonsite.com/report')}
+              icon="bug-outline"
+              theme={currentTheme}
+            />
+          </View>
+        </View>
+
+        {/* Section Légal */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Informations légales</Text>
+          <View style={styles.card}>
+            <SettingsItem
+              title="Conditions d'utilisation"
+              subtitle="Termes et conditions"
+              onPress={() => openUrl('https://tonsite.com/conditions')}
+              icon="document-text-outline"
+              theme={currentTheme}
+            />
+            <Separator theme={currentTheme} />
+            <SettingsItem
+              title="Politique de confidentialité"
+              subtitle="Gestion des données"
+              onPress={() => openUrl('https://tonsite.com/privacy')}
+              icon="eye-off-outline"
+              theme={currentTheme}
+            />
+            <Separator theme={currentTheme} />
+            <SettingsItem
+              title="Licences"
+              subtitle="Logiciels tiers"
+              onPress={() => openUrl('https://tonsite.com/licenses')}
+              icon="library-outline"
+              theme={currentTheme}
+            />
+          </View>
+        </View>
+
+        {/* Bouton Déconnexion */}
+        <View style={styles.section}>
+          <TouchableOpacity style={[styles.logoutButton, { backgroundColor: currentTheme.error }]} onPress={handleLogout}>
+            <Ionicons name="log-out-outline" size={20} color="#fff" />
+            <Text style={styles.logoutText}>Se déconnecter</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Version de l'app */}
+        <View style={styles.versionContainer}>
+          <Text style={[styles.versionText, { color: currentTheme.textSecondary }]}>
+            Version 2.1.0 (Build 42)
+          </Text>
+        </View>
+      </ScrollView>
+
+      {/* Modal Sélection Thème */}
+      <Modal
+        visible={showThemeModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowThemeModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: currentTheme.card }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: currentTheme.text }]}>
+                Choisir un thème
+              </Text>
+              <TouchableOpacity onPress={() => setShowThemeModal(false)}>
+                <Ionicons name="close" size={24} color={currentTheme.text} />
+              </TouchableOpacity>
+            </View>
+            
+            <ScrollView style={styles.themeList}>
+              {Object.entries(THEMES).map(([key, theme]) => (
+                <TouchableOpacity
+                  key={key}
+                  style={[
+                    styles.themeOption,
+                    { borderColor: currentTheme.border },
+                    settings.currentTheme === key && { borderColor: theme.primary, borderWidth: 2 }
+                  ]}
+                  onPress={() => handleThemeChange(key as ThemeName)}
+                >
+                  <View style={[styles.themePreview, { backgroundColor: theme.primary }]}>
+                    <View style={[styles.themePreviewAccent, { backgroundColor: theme.secondary }]} />
+                  </View>
+                  <View style={styles.themeInfo}>
+                    <Text style={[styles.themeName, { color: currentTheme.text }]}>
+                      {getThemeLabel(key as ThemeName)}
+                    </Text>
+                    <Text style={[styles.themeDescription, { color: currentTheme.textSecondary }]}>
+                      {getThemeDescription(key as ThemeName)}
+                    </Text>
+                  </View>
+                  {settings.currentTheme === key && (
+                    <Ionicons name="checkmark-circle" size={24} color={theme.primary} />
+                  )}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal Taille Police */}
+      <Modal
+        visible={showFontModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowFontModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: currentTheme.card }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: currentTheme.text }]}>
+                Taille de police
+              </Text>
+              <TouchableOpacity onPress={() => setShowFontModal(false)}>
+                <Ionicons name="close" size={24} color={currentTheme.text} />
+              </TouchableOpacity>
+            </View>
+            
+            <View style={styles.fontSizeContainer}>
+              <Text style={[styles.fontPreview, { color: currentTheme.text, fontSize: settings.fontSize }]}>
+                Exemple de texte avec cette taille
+              </Text>
+              
+              <View style={styles.sliderContainer}>
+                <Text style={[styles.sliderLabel, { color: currentTheme.textSecondary }]}>Petit</Text>
+                <Slider
+                  style={styles.slider}
+                  minimumValue={12}
+                  maximumValue={24}
+                  value={settings.fontSize}
+                  onValueChange={(value) => updateSetting('fontSize', Math.round(value))}
+                  minimumTrackTintColor={currentTheme.primary}
+                  maximumTrackTintColor={currentTheme.border}
+                  thumbTintColor="#1EB1FC"
+                />
+                <Text style={[styles.sliderLabel, { color: currentTheme.textSecondary }]}>Grand</Text>
+              </View>
+              
+              <Text style={[styles.currentFontSize, { color: currentTheme.text }]}>
+                {settings.fontSize}px
+              </Text>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </SafeAreaView>
+  );
+}
+
+// Composant Item de paramètre
+const SettingsItem = ({
+  title,
+  subtitle,
+  onPress,
+  icon,
+  theme,
+  rightComponent,
+}: {
+  title: string;
+  subtitle?: string;
+  onPress?: () => void;
+  icon: React.ComponentProps<typeof Ionicons>['name'];
+  theme: Theme;
+  rightComponent?: React.ReactNode;
+}) => {
+  const styles = createStyles(theme);
+  
+  return (
+    <TouchableOpacity
+      style={styles.settingsItem}
+      onPress={onPress}
+      disabled={!onPress}
+      activeOpacity={onPress ? 0.7 : 1}
+    >
+      <View style={styles.settingsItemLeft}>
+        <View style={[styles.iconContainer, { backgroundColor: `${theme.primary}15` }]}>
+          <Ionicons name={icon} size={20} color={theme.primary} />
+        </View>
+        <View style={styles.settingsItemText}>
+          <Text style={[styles.settingsItemTitle, { color: theme.text }]}>{title}</Text>
+          {subtitle && (
+            <Text style={[styles.settingsItemSubtitle, { color: theme.textSecondary }]}>
+              {subtitle}
+            </Text>
+          )}
+        </View>
+      </View>
+      {rightComponent || (onPress && (
+        <Ionicons name="chevron-forward" size={20} color={theme.textSecondary} />
+      ))}
+    </TouchableOpacity>
+  );
+};
+
+// Composant Séparateur
+const Separator = ({ theme }: { theme: Theme }) => {
+  const styles = createStyles(theme);
+  return <View style={styles.separator} />;
+};
+
+// Fonctions utilitaires
+const getThemeLabel = (theme: ThemeName): string => {
+  const labels = {
+    light: 'Clair',
+    dark: 'Sombre',
+    blue: 'Bleu',
+    green: 'Vert',
+    purple: 'Violet',
+  };
+  return labels[theme];
+};
+
+const getThemeDescription = (theme: ThemeName): string => {
+  const descriptions = {
+    light: 'Thème classique clair',
+    dark: 'Économise la batterie',
+    blue: 'Thème professionnel',
+    green: 'Thème naturel',
+    purple: 'Thème créatif',
+  };
+  return descriptions[theme];
+};
+
+// Styles dynamiques
+const createStyles = (theme: Theme) => StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: theme.background,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 15,
+    backgroundColor: theme.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.border,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+  },
+  backButton: {
+    padding: 8,
+    borderRadius: 20,
+    backgroundColor: theme.card,
+  },
+  headerTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: theme.text,
+  },
+  headerRight: {
+    width: 40,
+  },
+  content: {
+    paddingBottom: 20,
+  },
+  section: {
+    marginTop: 20,
+    paddingHorizontal: 20,
+  },
+  sectionTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: theme.textSecondary,
+    marginBottom: 8,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  card: {
+    backgroundColor: theme.card,
+    borderRadius: 12,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+  },
+  settingsItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+  },
+  settingsItemLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  iconContainer: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  settingsItemText: {
+    flex: 1,
+  },
+  settingsItemTitle: {
+    fontSize: 16,
+    fontWeight: '500',
+    marginBottom: 2,
+  },
+  settingsItemSubtitle: {
+    fontSize: 13,
+    lineHeight: 16,
+  },
+  separator: {
+    height: 1,
+    backgroundColor: theme.border,
+    marginHorizontal: 16,
+    opacity: 0.3,
+  },
+  logoutButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    marginHorizontal: 20,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+  },
+  logoutText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  versionContainer: {
+    alignItems: 'center',
+    paddingVertical: 20,
+  },
+  versionText: {
+    fontSize: 12,
+  },
+  
+  // Modal styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: '80%',
+    minHeight: '50%',
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.border,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  
+  // Theme modal styles
+  themeList: {
+    padding: 20,
+  },
+  themeOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 12,
+  },
+  themePreview: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    marginRight: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  themePreviewAccent: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+  },
+  themeInfo: {
+    flex: 1,
+  },
+  themeName: {
+    fontSize: 16,
+    fontWeight: '500',
+    marginBottom: 2,
+  },
+  themeDescription: {
+    fontSize: 13,
+  },
+  
+  // Font modal styles
+  fontSizeContainer: {
+    padding: 20,
+  },
+  fontPreview: {
+    textAlign: 'center',
+    marginBottom: 30,
+    lineHeight: 28,
+  },
+  sliderContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  slider: {
+    flex: 1,
+    marginHorizontal: 15,
+  },
+  sliderLabel: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  currentFontSize: {
+    textAlign: 'center',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+});
+acceuil.tsx
+//acceil.tsx
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import {
+  StyleSheet, View, Text, TouchableOpacity, Alert, Modal, Image,
+  FlatList, ActivityIndicator, Linking, Dimensions, ScrollView, TextInput,
+  Animated, RefreshControl, PanResponder, Pressable
+} from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useWindowDimensions } from 'react-native';
+import { useFocusEffect } from 'expo-router';
+import { Platform } from 'react-native';
+import Fireworks from '../artifice/Fireworks';
+import { useTheme, useThemedStyles, Theme } from '../contexts/ThemeContext';
+import LinearGradient from 'react-native-linear-gradient';
+
+const API_URL = 'http://10.35.3.236/gestvente/api/formations.php';
+const IMAGE_BASE_URL = 'http://10.35.3.236/gestvente/';
+const PRIMARY_COLOR = '#FF6B00';
+const SECONDARY_COLOR = '#FF8F42';
+const SUCCESS_COLOR = '#4CAF50';
+const ERROR_COLOR = '#F44336';
+const BACKGROUND_COLOR = '#F8F9FA';
+
+interface Produit {
+  dateCreation: string | number | Date;
+  prixPromo: number;
+  id: number;
+  titre: string;
+  imageUrl?: string | null;
+  prix: number;
+  categorie: string;
+  description?: string;
+  achetee: boolean;
+  likes: number;
+  pouces: number;
+  liked?: boolean;
+  thumbsUp?: boolean;
+  expiration?: string;
+  prixOriginal?: number;
+}
+
+interface Event {
+  name: string;
+  month: number;
+  day: number;
+}
+
+// Composant ruban animé amélioré
+function FloatingRibbon({ text }: { text: string }) {
+  const rotateAnim = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    const rotationAnimation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(rotateAnim, {
+          toValue: 1,
+          duration: 1500,
+          useNativeDriver: true,
+        }),
+        Animated.timing(rotateAnim, {
+          toValue: 0,
+          duration: 1500,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+
+    const pulseAnimation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(scaleAnim, {
+          toValue: 1.05,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+        Animated.timing(scaleAnim, {
+          toValue: 1,
+          duration: 800,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+
+    rotationAnimation.start();
+    pulseAnimation.start();
+
+    return () => {
+      rotationAnimation.stop();
+      pulseAnimation.stop();
+    };
+  }, []);
+
+  const rotate = rotateAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['-3deg', '3deg'],
+  });
+
+  const styles = useThemedStyles((theme) => createFloatingRibbonStyles(theme));
+  
+  return (
+    <Animated.View
+      style={[
+        styles.ribbonContainer,
+        {
+          transform: [
+            { rotate },
+            { scale: scaleAnim },
+            { skewY: '-5deg' }
+          ]
+        }
+      ]}
+    >
+      <Text style={styles.ribbonText}>{text}</Text>
+    </Animated.View>
+  );
+}
+
+const EVENTS = [
+  { name: 'Bonne année', month: 0, day: 1 },
+  { name: 'Saint Valentin', month: 1, day: 14 },
+  { name: 'Bonne Fête du Travail', month: 4, day: 1 },
+  { name: 'Bonne Fête de la Jeunesse', month: 1, day: 11 },
+  { name: 'Indépendance Cameroun', month: 4, day: 20 },
+  { name: 'Joyeux Noël', month: 11, day: 25 },
+  { name: 'joyeux anniversaire', month: 8, day: 4 },
+];
+
+function getTodayEvent() {
+  const today = new Date();
+  return EVENTS.find(event => {
+    return today.getDate() === event.day && today.getMonth() === event.month;
+  });
+}
+
+export default function AccueilScreen() {
+  const { width } = useWindowDimensions();
+  const [produits, setProduits] = useState<Produit[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadingModal, setLoadingModal] = useState(false);
+  const [panier, setPanier] = useState<Produit[]>([]);
+  const [modalVisible, setModalVisible] = useState(false);
+  const [produitSelectionne, setProduitSelectionne] = useState<Produit | null>(null);
+  const [menuVisible, setMenuVisible] = useState(false);
+  const [activeCategoryKey, setActiveCategoryKey] = useState('formation disponible');
+  const [searchText, setSearchText] = useState('');
+  const [connecte, setConnecte] = useState(false);
+  const [nombreTelechargements, setNombreTelechargements] = useState(0);
+
+  // Composants du feu d'artifice
+  const [eventName, setEventName] = useState('');
+  const [showFireworks, setShowFireworks] = useState(false);
+  const [todayEvent, setTodayEvent] = useState(getTodayEvent());
+  const scaleAnim = useRef(new Animated.Value(0)).current;
+  const opacityAnim = useRef(new Animated.Value(0)).current;
+
+  // Affichage date actuelle
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const [showTear, setShowTear] = useState(false);
+
+  useEffect(() => {
+    const event = getTodayEvent();
+    if (event) {
+      setTodayEvent(event);
+      if (Platform.OS !== 'web') {
+        setShowFireworks(true);
+
+        Animated.parallel([
+          Animated.timing(scaleAnim, {
+            toValue: 1,
+            duration: 1000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(opacityAnim, {
+            toValue: 1,
+            duration: 1000,
+            useNativeDriver: true,
+          }),
+        ]).start();
+
+        const timeout = setTimeout(() => {
+          Animated.parallel([
+            Animated.timing(scaleAnim, {
+              toValue: 0.2,
+              duration: 1000,
+              useNativeDriver: true,
+            }),
+            Animated.timing(opacityAnim, {
+              toValue: 0,
+              duration: 1000,
+              useNativeDriver: true,
+            }),
+          ]).start(() => {
+            setShowFireworks(false);
+          });
+        }, 10000);
+        return () => clearTimeout(timeout);
+      }
+    }
+  }, []);
+
+  const getRemainingTime = (expirationDate: string) => {
+    const now = new Date();
+    const expiration = new Date(expirationDate);
+    const diff = expiration.getTime() - now.getTime();
+    if (diff <= 0) return "Promotion expirée";
+
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+    const hours = Math.floor((diff / (1000 * 60 * 60)) % 24);
+    const minutes = Math.floor((diff / (1000 * 60)) % 60);
+
+    return `${days}j ${hours}h ${minutes}min restantes`;
+  };
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setTodayEvent(getTodayEvent());
+    }, 30 * 1000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  const isEventActive = (todayEvent: Event | null) => {
+    if (!todayEvent) return false;
+    const now = new Date();
+    const eventDate = new Date();
+    eventDate.setMonth(todayEvent.month);
+    eventDate.setDate(todayEvent.day);
+    eventDate.setHours(23, 59, 59, 999);
+
+    return now.getTime() <= eventDate.getTime();
+  };
+
+  useEffect(() => {
+    const checkDateChange = setInterval(() => {
+      const now = new Date();
+      if (
+        now.getDate() !== currentDate.getDate() ||
+        now.getMonth() !== currentDate.getMonth() ||
+        now.getFullYear() !== currentDate.getFullYear()
+      ) {
+        setShowTear(true);
+        setTimeout(() => {
+          setCurrentDate(now);
+          setShowTear(false);
+        }, 2000);
+      }
+    }, 60000);
+
+    return () => clearInterval(checkDateChange);
+  }, [currentDate]);
+
+  const [, setTimerTick] = useState(0);
+
+  const days = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
+  const months = [
+    'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
+    'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'
+  ];
+  const formattedDate = `${days[currentDate.getDay()]} ${currentDate.getDate()} ${months[currentDate.getMonth()]} ${currentDate.getFullYear()}`;
+
+  const PROMO_FREE_KEY = 'promo_free_active_at';
+
+  async function checkAndUpdateFreePromotion() {
+    const now = new Date();
+    const event = getTodayEvent();
+
+    const storedDateStr = await AsyncStorage.getItem(PROMO_FREE_KEY);
+
+    if (event) {
+      if (!storedDateStr) {
+        await AsyncStorage.setItem(PROMO_FREE_KEY, now.toISOString());
+        return true;
+      } else {
+        const storedDate = new Date(storedDateStr);
+        const diffMs = now.getTime() - storedDate.getTime();
+
+        if (diffMs < 24 * 60 * 60 * 1000) {
+          return true;
+        } else {
+          await AsyncStorage.removeItem(PROMO_FREE_KEY);
+          return false;
+        }
+      }
+    } else {
+      if (storedDateStr) {
+        await AsyncStorage.removeItem(PROMO_FREE_KEY);
+      }
+      return false;
+    }
+  }
+
+  const isFreePromotionActiveForProduct = (produit: Produit) => {
+    return produit.categorie.toLowerCase() === 'promotion' && produit.prix === 0;
+  };
+
+  const isPromotionActive = (item: Produit) => {
+    if (item.categorie.toLowerCase() !== 'promotion' || !item.expiration) {
+      return false;
+    }
+    const now = new Date();
+    const expiration = new Date(item.expiration);
+    return expiration.getTime() > now.getTime();
+  };
+
+  useFocusEffect(
+    useCallback(() => {
+      const chargerNombreTelechargements = async () => {
+        const userId = await AsyncStorage.getItem('user_id');
+        if (!userId) return;
+
+        const count = await AsyncStorage.getItem(`downloads_count_${userId}`);
+        setNombreTelechargements(parseInt(count || '0', 10));
+      };
+
+      chargerNombreTelechargements();
+    }, [])
+  );
+
+  const router = useRouter();
+  const [commentairesNonLus, setCommentairesNonLus] = useState<Record<number, number>>({});
+  const [disabledReactions, setDisabledReactions] = useState<Record<number, boolean>>({});
+
+  // Animation des likes améliorée
+  const [likeAnimations, setLikeAnimations] = useState<Record<number, Animated.Value>>({});
+
+  const createLikeAnimation = (produitId: number) => {
+    if (!likeAnimations[produitId]) {
+      const newAnim = new Animated.Value(1);
+      setLikeAnimations(prev => ({
+        ...prev,
+        [produitId]: newAnim
+      }));
+      return newAnim;
+    }
+    return likeAnimations[produitId];
+  };
+
+  const getCategories = (): { key: string; label: string }[] => {
+    const catList: { key: string; label: string }[] = [];
+
+    if (!Array.isArray(produits) || produits.length === 0) {
+      return catList;
+    }
+
+    const normaliser = (str: string | null | undefined) =>
+      (str || '').toLowerCase().trim();
+
+    const categoriesExistantes = new Set<string>();
+
+    produits.forEach((p) => {
+      const cat = normaliser(p.categorie);
+      if (cat) {
+        categoriesExistantes.add(cat);
+      }
+    });
+
+    catList.push({ key: 'formation disponible', label: '📚 Toutes les formations' });
+
+    if (categoriesExistantes.has('promotion')) {
+      catList.push({ key: 'promotion', label: '🔥 Promotions' });
+    }
+    if (categoriesExistantes.has('populaire')) {
+      catList.push({ key: 'populaire', label: '⭐ Populaires' });
+    }
+    if (categoriesExistantes.has('cuisine')) {
+      catList.push({ key: 'cuisine', label: '🍽️ Cuisine' });
+    }
+    if (categoriesExistantes.has('informatique')) {
+      catList.push({ key: 'informatique', label: '💻 Informatique' });
+    }
+    if (categoriesExistantes.has('savons')) {
+      catList.push({ key: 'savons', label: '🧼 Savons' });
+    }
+
+    return catList;
+  };
+
+  const getCardWidth = () => {
+    if (width < 360) return width - 30;
+    if (width < 600) return width * 0.9;
+    if (width < 900) return width * 0.7;
+    return 400;
+  };
+
+  const onCommentairesVus = (produitId: number) => {
+    setCommentairesNonLus((prev) => ({
+      ...prev,
+      [produitId]: 0,
+    }));
+  };
+
+  const fetchCommentairesNonLus = async (produitId: number) => {
+    try {
+      const utilisateurIdStr = await AsyncStorage.getItem('user_id');
+      if (!utilisateurIdStr) return;
+      const utilisateurId = parseInt(utilisateurIdStr, 10);
+
+      const response = await fetch(`http://10.35.3.236/gestvente/api/commentaires.php?count_unread=1&produitId=${produitId}&utilisateurId=${utilisateurId}`);
+      const data = await response.json();
+      if (data && typeof data.nonLus === 'number') {
+        setCommentairesNonLus(prev => ({ ...prev, [produitId]: data.nonLus }));
+      }
+    } catch (error) {
+      console.error("Erreur fetch commentaires non lus:", error);
+    }
+  };
+
+  const reagirProduit = async (produitId: number, type: string): Promise<'added' | 'removed' | null> => {
+    try {
+      const utilisateurIdStr = await AsyncStorage.getItem('user_id');
+      if (!utilisateurIdStr) {
+        Alert.alert('Erreur', 'Utilisateur non connecté');
+        return null;
+      }
+
+      const utilisateurId = parseInt(utilisateurIdStr, 10);
+
+      const response = await fetch('http://10.35.3.236/gestvente/api/reagir.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ produitId, type, utilisateurId }),
+      });
+
+      const data = await response.json();
+      return data?.action ?? null;
+    } catch (error) {
+      console.error('Erreur de réaction:', error);
+      return null;
+    }
+  };
+
+  const changerCategorie = (direction: number) => {
+    const cats = getCategories();
+    const currentIndex = cats.findIndex(c => c.key === activeCategoryKey);
+    const nextIndex = (currentIndex + direction + cats.length) % cats.length;
+    setActiveCategoryKey(cats[nextIndex].key);
+  };
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (evt, gestureState) => Math.abs(gestureState.dx) > 30,
+      onPanResponderRelease: (evt, gestureState) => {
+        if (gestureState.dx > 50) changerCategorie(-1);
+        else if (gestureState.dx < -50) changerCategorie(1);
+      }
+    })
+  ).current;
+
+  const animations = useRef<Record<number, Animated.Value>>({}).current;
+  const menuAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    fetchProduits();
+    verifierConnexion();
+  }, []);
+
+  useEffect(() => {
+    AsyncStorage.setItem('panier', JSON.stringify(panier))
+      .catch(e => console.warn("Erreur lors de la sauvegarde du panier :", e));
+  }, [panier]);
+
+  useEffect(() => {
+    const loadPanier = async () => {
+      try {
+        const panierData = await AsyncStorage.getItem('panier');
+        if (panierData) setPanier(JSON.parse(panierData));
+      } catch (e) {
+        console.warn("Erreur lors du chargement du panier :", e);
+      }
+    };
+    loadPanier();
+  }, []);
+
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      try {
+        let userId: string | null = null;
+
+        if (Platform.OS === 'web') {
+          userId = localStorage.getItem('user_id');
+        } else {
+          userId = await AsyncStorage.getItem('user_id');
+        }
+
+        if (!userId) return;
+
+        const res = await fetch(`http://10.35.3.236/gestvente/api/etat_utilisateur.php?id=${userId}`);
+        const text = await res.text();
+        console.log("Réponse brute utilisateur.php :", text);
+
+        const data = JSON.parse(text);
+        if (data.utilisateur?.etat === 'inactif') {
+          if (Platform.OS === 'web') {
+            localStorage.clear();
+            window.alert('Votre compte a été désactivé par l\'administrateur.');
+            router.replace('/Connexion');
+          } else {
+            await AsyncStorage.clear();
+            Alert.alert(
+              'Déconnexion',
+              'Votre compte a été désactivé par l\'administrateur.',
+              [
+                {
+                  text: 'OK',
+                  onPress: () => router.replace('/Connexion'),
+                },
+              ]
+            );
+          }
+        }
+      } catch (error) {
+        console.error("Erreur lors de la vérification de l'état :", error);
+      }
+    }, 10000);
+
+    return () => clearInterval(interval);
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      produits.forEach((p) => fetchCommentairesNonLus(p.id));
+    }, [produits])
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      const rafraichirPanier = async () => {
+        try {
+          const panierData = await AsyncStorage.getItem('panier');
+          if (panierData) {
+            const panierJson = JSON.parse(panierData);
+            setPanier(panierJson);
+          } else {
+            setPanier([]);
+          }
+        } catch (e) {
+          console.warn("Erreur lors de l'actualisation du panier :", e);
+        }
+      };
+
+      rafraichirPanier();
+    }, [])
+  );
+
+  const isNew = (dateCreation: string | number | Date) => {
+    if (!dateCreation) return false;
+    const creationDate = new Date(dateCreation);
+    const now = new Date();
+    const diffTime = now.getTime() - creationDate.getTime();
+    const diffDays = diffTime / (1000 * 60 * 60 * 24);
+    return diffDays <= 7;
+  };
+
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = () => {
+    setRefreshing(true);
+    fetchProduits();
+  };
+
+useEffect(() => {
+  const hasActiveCategory = getCategories().some(c => c.key === activeCategoryKey);
+  if (!hasActiveCategory) {
+    setActiveCategoryKey('formation disponible');
+  }
+}, [produits]);
+
+  const handlePressCommentaires = async (produitId: number) => {
+    try {
+      const utilisateurIdStr = await AsyncStorage.getItem('user_id');
+      if (!utilisateurIdStr) return;
+      const utilisateurId = parseInt(utilisateurIdStr, 10);
+
+      await fetch(
+        `http://10.35.3.236/gestvente/api/commentaires.php?marquer_vus=1`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ produitId, utilisateurId }),
+        }
+      );
+
+      setCommentairesNonLus(prev => ({
+        ...prev,
+        [produitId]: 0,
+      }));
+
+      router.push(`../Commentaires?produitId=${produitId}`);
+    } catch (error) {
+      console.error("Erreur lors du marquage des commentaires :", error);
+      Alert.alert("Erreur", "Impossible d'ouvrir les commentaires.");
+    }
+  };
+
+  const verifierConnexion = async () => {
+    try {
+      const email = await AsyncStorage.getItem('user_email');
+      const statut = await AsyncStorage.getItem('user_status');
+
+      if (email && statut !== 'inactif') {
+        setConnecte(true);
+      } else {
+        await AsyncStorage.clear();
+        Alert.alert(
+          'Compte désactivé',
+          'Votre compte a été désactivé. Veuillez contacter l\'administrateur.',
+          [
+            {
+              text: 'OK',
+              onPress: () => router.replace('/Connexion'),
+            },
+          ]
+        );
+      }
+    } catch (e) {
+      console.warn('Erreur de lecture AsyncStorage :', e);
+      setConnecte(false);
+      router.replace('/Connexion');
+    }
+  };
+
+  const deconnexion = async () => {
+    await AsyncStorage.clear();
+    setConnecte(false);
+    Alert.alert("Déconnexion", "Vous êtes déconnecté");
+    router.replace('/Connexion');
+  };
+
+  const fetchProduits = async () => {
+    setLoading(true);
+    try {
+      const response = await fetch(API_URL);
+      const data = await response.json();
+      if (!Array.isArray(data)) throw new Error("Format inattendu");
+
+      const promoGratuiteActive = await checkAndUpdateFreePromotion();
+
+      const produitsFormat = data.map((item: any) => {
+        const prixOriginal = Number(item.prix);
+        const isPromotion = item.categorie.toLowerCase() === 'promotion';
+
+        return {
+          ...item,
+          imageUrl: item.imageUrl ? `${IMAGE_BASE_URL}${item.imageUrl}` : null,
+          prix: (promoGratuiteActive && isPromotion) ? 0 : prixOriginal,
+          prixOriginal,
+          achetee: item.achetee === "1",
+          likes: item.likes ?? 0,
+          pouces: item.pouces ?? 0,
+          liked: item.liked ?? false,
+          thumbsUp: item.thumbsUp ?? false,
+        };
+      });
+
+      setProduits(produitsFormat);
+      produitsFormat.forEach((p: Produit) => fetchCommentairesNonLus(p.id));
+    } catch (error) {
+      console.error('Erreur chargement formations:', error);
+      Alert.alert("Erreur", "Impossible de charger les formations");
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  const ajouterAuPanier = (produit: Produit) => {
+    if (!panier.some(p => p.id === produit.id)) {
+      setPanier(prev => [...prev, produit]);
+      Alert.alert("Panier", "Produit ajouté au panier");
+    } else {
+      Alert.alert("Info", "Ce produit est déjà dans le panier");
+    }
+  };
+
+  const ouvrirDetails = (produit: Produit) => {
+    setLoadingModal(true);
+    setTimeout(() => {
+      setProduitSelectionne(produit);
+      setModalVisible(true);
+      setLoadingModal(false);
+    }, 1000);
+  };
+
+  const produitsFiltres = produits
+    .filter(p => {
+      if (activeCategoryKey === 'populaire') return true;
+      if (activeCategoryKey === 'formation disponible') return true;
+      return p.categorie.toLowerCase() === activeCategoryKey.toLowerCase();
+    })
+    .filter(p =>
+      typeof p.titre === 'string'
+        ? p.titre.toLowerCase().includes(searchText.toLowerCase())
+        : false
+    );
+
+  if (activeCategoryKey === 'populaire') {
+    produitsFiltres.sort((a, b) => {
+      const scoreA = (a.likes ?? 0) + (a.pouces ?? 0);
+      const scoreB = (b.likes ?? 0) + (b.pouces ?? 0);
+      return scoreB - scoreA;
+    });
+    produitsFiltres.splice(100);
+  }
+
+  const renderAnimatedItem = ({ item, index }: { item: Produit; index: number }) => {
+    if (!animations[item.id]) {
+      animations[item.id] = new Animated.Value(0);
+      Animated.timing(animations[item.id], {
+        toValue: 1,
+        duration: 600,
+        delay: index * 150,
+        useNativeDriver: true,
+      }).start();
+    }
+
+    if (item.liked === undefined) item.liked = false;
+    if (item.thumbsUp === undefined) item.thumbsUp = false;
+    if (item.likes === undefined) item.likes = 0;
+    if (item.pouces === undefined) item.pouces = 0;
+
+    const toggleLike = async () => {
+      if (disabledReactions[item.id]) return;
+
+      setDisabledReactions(prev => ({ ...prev, [item.id]: true }));
+
+      // Animation du bouton like
+      const likeAnim = createLikeAnimation(item.id);
+      Animated.sequence([
+        Animated.timing(likeAnim, {
+          toValue: 1.3,
+          duration: 150,
+          useNativeDriver: true,
+        }),
+        Animated.timing(likeAnim, {
+          toValue: 1,
+          duration: 150,
+          useNativeDriver: true,
+        }),
+      ]).start();
+
+      const action = await reagirProduit(item.id, 'like');
+
+      if (action === 'added') {
+        item.likes++;
+        item.liked = true;
+      } else if (action === 'removed') {
+        item.likes = Math.max(0, item.likes - 1);
+        item.liked = false;
+      }
+
+      setProduits([...produits]);
+
+      setTimeout(() => {
+        setDisabledReactions(prev => ({ ...prev, [item.id]: false }));
+      }, 1000);
+    };
+
+    const toggleThumbsUp = async () => {
+      if (disabledReactions[item.id]) return;
+
+      setDisabledReactions(prev => ({ ...prev, [item.id]: true }));
+
+      const action = await reagirProduit(item.id, 'pouce');
+
+      if (action === 'added') {
+        item.pouces++;
+        item.thumbsUp = true;
+      } else if (action === 'removed') {
+        item.pouces = Math.max(0, item.pouces - 1);
+        item.thumbsUp = false;
+      }
+
+      setProduits([...produits]);
+
+      setTimeout(() => {
+        setDisabledReactions(prev => ({ ...prev, [item.id]: false }));
+      }, 1000);
+    };
+
+    return (
+      <Animated.View
+        style={{
+          opacity: animations[item.id],
+          transform: [
+            {
+              translateY: animations[item.id].interpolate({
+                inputRange: [0, 1],
+                outputRange: [30, 0],
+              }),
+            },
+            {
+              scale: animations[item.id].interpolate({
+                inputRange: [0, 1],
+                outputRange: [0.9, 1],
+              })
+            }
+          ],
+          marginBottom: 20,
+        }}
+      >
+        <TouchableOpacity
+          key={item.id}
+          style={[
+            styles.cardSingle,
+            {
+              width: getCardWidth(),
+              alignSelf: 'center'
+            }
+          ]}
+          activeOpacity={0.85}
+          onPress={() => ouvrirDetails(item)}
+        >
+          <View style={styles.imageContainer}>
+            {item.imageUrl ? (
+              <Image source={{ uri: item.imageUrl }} style={styles.imageSingle} />
+            ) : (
+              <View style={styles.placeholderImage}>
+                <Ionicons name="image-outline" size={50} color="#ccc" />
+              </View>
+            )}
+
+            {/* Ruban d'événement */}
+            {item.categorie === 'promotion' && todayEvent && isEventActive(todayEvent) && (
+              <View style={styles.ribbonContainer}>
+                <Text style={styles.ribbonText}>
+                  🎉 {todayEvent.name} – ⏳{" "}
+                  {getRemainingTime(new Date(new Date().setHours(23, 59, 59, 999)).toISOString())}
+                </Text>
+              </View>
+            )}
+
+            {/* Badge temps restant pour les promotions */}
+            {item.categorie.toLowerCase() === 'promotion' && isPromotionActive(item) && item.expiration && (
+              <FloatingRibbon text={getRemainingTime(item.expiration)} />
+            )}
+
+            {/* Badge nouveau */}
+            {isNew(item.dateCreation) && (
+              <View style={styles.newBadge}>
+                <Text style={styles.newBadgeText}>✨ Nouveau</Text>
+              </View>
+            )}
+
+            {/* Overlay gradient sur l'image */}
+            <View style={styles.imageOverlay} />
+          </View>
+
+          <View style={styles.cardContent}>
+            <View style={styles.titleRow}>
+              <Text style={styles.titreSingle} numberOfLines={2}>{item.titre}</Text>
+              {item.achetee && (
+                <View style={styles.acheteBadge}>
+                  <Ionicons name="checkmark-circle" size={16} color="white" />
+                  <Text style={styles.acheteBadgeText}>Acheté</Text>
+                </View>
+              )}
+            </View>
+
+            {/* Section prix améliorée */}
+            <View style={styles.priceSection}>
+              {(item.categorie.toLowerCase() === 'promotion' && isPromotionActive(item)) ? (
+                <View style={styles.promoPrice}>
+                  <Text style={styles.originalPrice}>{item.prixOriginal} FCFA</Text>
+                  <Text style={styles.currentPrice}>
+                    {isFreePromotionActiveForProduct(item) ? 'GRATUIT' : `${item.prixPromo ?? 0} FCFA`}
+                  </Text>
+                  <View style={styles.discountBadge}>
+                    <Text style={styles.discountText}>
+                      -{Math.round(((item.prix - (item.prixPromo ?? 0)) / (item.prixOriginal || item.prix)) * 100)}%
+                    </Text>
+                  </View>
+                </View>
+              ) : (
+                <Text style={styles.normalPrice}>{item.prix} FCFA</Text>
+              )}
+            </View>
+
+            {/* Bouton d'action amélioré */}
+            {(item.achetee || isPromotionActive(item) || isFreePromotionActiveForProduct(item)) ? (
+              <TouchableOpacity
+                style={styles.startButton}
+                onPress={() => router.push(`/videos?produitId=${item.id}`)}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="play-circle" size={20} color="white" style={{ marginRight: 8 }} />
+                <Text style={styles.startButtonText}>Commencer la formation</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={styles.buyButton}
+                onPress={() => ajouterAuPanier(item)}
+                activeOpacity={0.8}
+              >
+                <Ionicons name="cart" size={18} color="white" style={{ marginRight: 8 }} />
+                <Text style={styles.buyButtonText}>Ajouter au panier</Text>
+              </TouchableOpacity>
+            )}
+
+            {/* Section réactions améliorée */}
+            <View style={styles.reactionSection}>
+              <Animated.View
+                style={[
+                  styles.reactionButton,
+                  {
+                    transform: [{
+                      scale: likeAnimations[item.id] || new Animated.Value(1)
+                    }]
+                  }
+                ]}
+              >
+                <TouchableOpacity
+                  style={styles.likeButton}
+                  onPress={toggleLike}
+                  disabled={disabledReactions[item.id]}
+                  activeOpacity={0.7}
+                >
+                  <Ionicons
+                    name={item.liked ? "heart" : "heart-outline"}
+                    size={22}
+                    color={item.liked ? ERROR_COLOR : "#666"}
+                    style={styles.reactionIcon}
+                  />
+                  <Text style={[styles.reactionCount, item.liked && { color: ERROR_COLOR }]}>
+                    {item.likes}
+                  </Text>
+                </TouchableOpacity>
+              </Animated.View>
+
+              <TouchableOpacity
+                style={styles.reactionButton}
+                onPress={toggleThumbsUp}
+                disabled={disabledReactions[item.id]}
+                activeOpacity={0.7}
+              >
+                <Ionicons
+                  name={item.thumbsUp ? "thumbs-up" : "thumbs-up-outline"}
+                  size={20}
+                  color={item.thumbsUp ? PRIMARY_COLOR : "#666"}
+                  style={styles.reactionIcon}
+                />
+                <Text style={[styles.reactionCount, item.thumbsUp && { color: PRIMARY_COLOR }]}>
+                  {item.pouces}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.commentButton}
+                onPress={() => handlePressCommentaires(item.id)}
+                activeOpacity={0.7}
+              >
+                <View style={styles.commentButtonContent}>
+                  <Ionicons name="chatbubble-ellipses-outline" size={20} color="#666" />
+                  <Text style={styles.commentText}>Commentaires</Text>
+                  {(commentairesNonLus?.[item.id] ?? 0) > 0 && (
+                    <View style={styles.notificationBadge}>
+                      <Text style={styles.notificationBadgeText}>
+                        {commentairesNonLus?.[item.id]}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </TouchableOpacity>
+      </Animated.View>
+    );
+  };
+
+  const toggleMenu = () => {
+    if (menuVisible) {
+      Animated.timing(menuAnim, {
+        toValue: 0,
+        duration: 250,
+        useNativeDriver: true,
+      }).start(() => setMenuVisible(false));
+    } else {
+      setMenuVisible(true);
+      Animated.timing(menuAnim, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }).start();
+    }
+  };
+
+  if (loading) {
+    return (
+      <View style={styles.loader}>
+        <ActivityIndicator size="large" color={PRIMARY_COLOR} />
+        <Text style={styles.loadingText}>Chargement des formations...</Text>
+      </View>
+    );
+  }
+
+  const closeMenu = () => {
+    setMenuVisible(false);
+  };
+
+  return (
+    <View style={styles.container} {...panResponder.panHandlers}>
+      {/* En-tête modernisé */}
+      <View style={styles.header}>
+        <TouchableOpacity onPress={toggleMenu} activeOpacity={0.7} style={styles.menuButton}>
+          <Ionicons name="menu" size={32} color="#fff" />
+        </TouchableOpacity>
+
+        <View style={styles.headerCenter}>
+          <Image source={require('../assets/logo.png')} style={styles.logo} />
+          <View>
+            <Text style={styles.headerTitle}>Formations Pro</Text>
+            <Text style={styles.headerSubtitle}>Apprenez et grandissez</Text>
+          </View>
+        </View>
+
+        <TouchableOpacity
+          style={styles.cartIcon}
+          onPress={() => router.push('/panier')}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="cart-outline" size={28} color="#fff" />
+          {panier.length > 0 && (
+            <View style={styles.cartBadge}>
+              <Text style={styles.cartBadgeText}>{panier.length}</Text>
+            </View>
+          )}
+        </TouchableOpacity>
+      </View>
+
+      {/* Feux d'artifice */}
+      {Platform.OS !== 'web' && showFireworks && <Fireworks />}
+
+      {/* Animation du nom de l'événement */}
+      {todayEvent && (
+        <Animated.View
+          style={[
+            styles.eventText,
+            {
+              transform: [{ scaleY: scaleAnim }],
+              opacity: opacityAnim,
+            },
+          ]}
+        >
+          <Text style={styles.eventTextContent}>🎉 {todayEvent.name} 🎉</Text>
+        </Animated.View>
+      )}
+
+      {/* Menu déroulant amélioré */}
+      {menuVisible && (
+        <>
+          <TouchableOpacity
+            style={styles.menuOverlay}
+            onPress={closeMenu}
+            activeOpacity={1}
+          />
+          <Animated.View
+            style={[
+              styles.dropdownMenu,
+              {
+                opacity: menuAnim,
+                transform: [{
+                  translateX: menuAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [-250, 0],
+                  })
+                }],
+              }
+            ]}
+          >
+            <View style={styles.menuHeader}>
+              <Text style={styles.menuHeaderText}>Menu Principal</Text>
+            </View>
+
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => { toggleMenu(); router.push('./mesFormations'); }}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="school-outline" size={20} color={PRIMARY_COLOR} />
+              <Text style={styles.menuItemText}>Mes formations</Text>
+              <Ionicons name="chevron-forward" size={16} color="#ccc" />
+            </TouchableOpacity>
+
+            {Platform.OS !== 'web' && (
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={async () => {
+                  toggleMenu();
+                  const userId = await AsyncStorage.getItem('user_id');
+                  if (userId) {
+                    await AsyncStorage.setItem(`downloads_count_${userId}`, '0');
+                  }
+                  setNombreTelechargements(0);
+                  router.push('/videos-locales');
+                }}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="download-outline" size={20} color={PRIMARY_COLOR} />
+                <Text style={styles.menuItemText}>Mes téléchargements</Text>
+                {nombreTelechargements > 0 && (
+                  <View style={styles.menuNotificationBadge}>
+                    <Text style={styles.menuNotificationText}>
+                      {nombreTelechargements}
+                    </Text>
+                  </View>
+                )}
+                <Ionicons name="chevron-forward" size={16} color="#ccc" />
+              </TouchableOpacity>
+            )}
+
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => { toggleMenu(); router.push('/notificaton'); }}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="notifications-outline" size={20} color={PRIMARY_COLOR} />
+              <Text style={styles.menuItemText}>Notifications</Text>
+              <Ionicons name="chevron-forward" size={16} color="#ccc" />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => { toggleMenu(); router.push('/settings'); }}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="settings-outline" size={20} color={PRIMARY_COLOR} />
+              <Text style={styles.menuItemText}>Paramètres</Text>
+              <Ionicons name="chevron-forward" size={16} color="#ccc" />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.menuItem}
+              onPress={() => { toggleMenu(); router.push('./comptes'); }}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="person-outline" size={20} color={PRIMARY_COLOR} />
+              <Text style={styles.menuItemText}>Mon Compte</Text>
+              <Ionicons name="chevron-forward" size={16} color="#ccc" />
+            </TouchableOpacity>
+
+            <View style={styles.menuDivider} />
+
+            <TouchableOpacity
+              style={[styles.menuItem, styles.logoutItem]}
+              onPress={() => {
+                toggleMenu();
+                connecte ? deconnexion() : router.push('/Connexion');
+              }}
+              activeOpacity={0.7}
+            >
+              <Ionicons
+                name={connecte ? "log-out-outline" : "log-in-outline"}
+                size={20}
+                color={connecte ? ERROR_COLOR : SUCCESS_COLOR}
+              />
+              <Text style={[
+                styles.menuItemText,
+                { color: connecte ? ERROR_COLOR : SUCCESS_COLOR }
+              ]}>
+                {connecte ? "Se déconnecter" : "Se connecter"}
+              </Text>
+            </TouchableOpacity>
+          </Animated.View>
+        </>
+      )}
+
+      {/* Section calendrier améliorée */}
+      <View style={styles.calendarContainer}>
+        <View style={styles.calendarImageContainer}>
+          {showTear ? (
+            <Image
+              source={require('../assets/tear.gif')}
+              style={styles.calendarImage}
+            />
+          ) : (
+            <Image
+              source={require('../assets/calendar_page.png')}
+              style={styles.calendarImage}
+            />
+          )}
+        </View>
+        <View style={styles.dateContainer}>
+          <Text style={styles.dateText}>{formattedDate}</Text>
+          {todayEvent && (
+            <Text style={styles.eventIndicator}>
+              🎉 {todayEvent.name}
+            </Text>
+          )}
+        </View>
+      </View>
+
+      {/* Barre de recherche améliorée */}
+      <View style={styles.searchContainer}>
+        <View style={styles.searchInputContainer}>
+          <Ionicons name="search" size={20} color="#999" style={styles.searchIcon} />
+          <TextInput
+            placeholder="Rechercher une formation..."
+            style={styles.searchInput}
+            value={searchText}
+            onChangeText={setSearchText}
+            placeholderTextColor="#999"
+            selectionColor={PRIMARY_COLOR}
+          />
+          {searchText.length > 0 && (
+            <TouchableOpacity
+              onPress={() => setSearchText('')}
+              style={styles.clearButton}
+            >
+              <Ionicons name="close-circle" size={20} color="#999" />
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+
+      {/* Barre des catégories améliorée */}
+      <View style={styles.categoriesWrapper}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.categoriesContent}
+        >
+          {getCategories().map((cat, index) => (
+            <TouchableOpacity
+              key={cat.key}
+              onPress={() => setActiveCategoryKey(cat.key)}
+              style={[
+                styles.categoryItem,
+                activeCategoryKey === cat.key && styles.categoryActive,
+                index === 0 && styles.firstCategory,
+              ]}
+              activeOpacity={0.7}
+            >
+              <Text
+                style={[
+                  styles.categoryText,
+                  activeCategoryKey === cat.key && styles.categoryActiveText,
+                ]}
+              >
+                {cat.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
+
+      {/* Liste des produits */}
+      <FlatList
+        data={produitsFiltres}
+        keyExtractor={(item) => item.id.toString()}
+        renderItem={renderAnimatedItem}
+        contentContainerStyle={styles.listContainer}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={[PRIMARY_COLOR]}
+            tintColor={PRIMARY_COLOR}
+          />
+        }
+        ListEmptyComponent={
+          <View style={styles.emptyContainer}>
+            <Ionicons name="search-outline" size={64} color="#ccc" />
+            <Text style={styles.emptyTitle}>Aucune formation trouvée</Text>
+            <Text style={styles.emptySubtitle}>
+              Essayez de modifier votre recherche ou changez de catégorie
+            </Text>
+          </View>
+        }
+        showsVerticalScrollIndicator={false}
+      />
+
+      {/* Modal détails produit améliorée */}
+      <Modal
+        visible={modalVisible}
+        animationType="slide"
+        onRequestClose={() => setModalVisible(false)}
+        transparent
+        statusBarTranslucent
+      >
+        <View style={styles.modalContainer}>
+          <View style={styles.modalOverlay}>
+            {loadingModal ? (
+              <View style={styles.modalLoader}>
+                <ActivityIndicator size="large" color={PRIMARY_COLOR} />
+                <Text style={styles.modalLoadingText}>Chargement...</Text>
+              </View>
+            ) : (
+              produitSelectionne && (
+                <View style={styles.modalContent}>
+                  <ScrollView showsVerticalScrollIndicator={false}>
+                    <View style={styles.modalHeader}>
+                      <TouchableOpacity
+                        style={styles.modalCloseButton}
+                        onPress={() => setModalVisible(false)}
+                        activeOpacity={0.7}
+                      >
+                        <Ionicons name="close" size={24} color="#fff" />
+                      </TouchableOpacity>
+                    </View>
+
+                    {produitSelectionne.imageUrl ? (
+                      <Image
+                        source={{ uri: produitSelectionne.imageUrl }}
+                        style={styles.modalImage}
+                      />
+                    ) : (
+                      <View style={styles.modalPlaceholder}>
+                        <Ionicons name="image-outline" size={80} color="#ccc" />
+                      </View>
+                    )}
+
+                    <View style={styles.modalBody}>
+                      <Text style={styles.modalTitle}>{produitSelectionne.titre}</Text>
+                      <Text style={styles.modalDescription}>
+                        {produitSelectionne.description || "Aucune description disponible."}
+                      </Text>
+
+                      <View style={styles.modalFooter}>
+                        <Text style={styles.modalPrice}>
+                          {produitSelectionne.prix} FCFA
+                        </Text>
+                      </View>
+                    </View>
+                  </ScrollView>
+                </View>
+              )
+            )}
+          </View>
+        </View>
+      </Modal>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  // CONTAINER PRINCIPAL
+  container: {
+    flex: 1,
+    backgroundColor: BACKGROUND_COLOR,
+  },
+
+  // HEADER AMÉLIORÉ
+  header: {
+    backgroundColor: PRIMARY_COLOR,
+    height: 80,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingTop: 20,
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+  },
+  menuButton: {
+    padding: 8,
+    marginRight: 12,
+    borderRadius: 8,
+  },
+  headerCenter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  logo: {
+    width: 40,
+    height: 40,
+    marginRight: 12,
+    borderRadius: 20,
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.3)',
+  },
+  headerTitle: {
+    color: 'white',
+    fontSize: 22,
+    fontWeight: 'bold',
+  },
+  headerSubtitle: {
+    color: 'rgba(255,255,255,0.8)',
+    fontSize: 12,
+    fontStyle: 'italic',
+  },
+
+  // PANIER AMÉLIORÉ
+  cartIcon: {
+    position: 'relative',
+    padding: 8,
+  },
+  cartBadge: {
+    position: 'absolute',
+    top: 2,
+    right: 2,
+    backgroundColor: ERROR_COLOR,
+    borderRadius: 12,
+    minWidth: 24,
+    height: 24,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+    borderWidth: 2,
+    borderColor: 'white',
+  },
+  cartBadgeText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+
+  // MENU DÉROULANT AMÉLIORÉ
+  menuOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    zIndex: 5,
+  },
+  dropdownMenu: {
+    position: 'absolute',
+    top: 80,
+    left: 0,
+    width: 280,
+    backgroundColor: 'white',
+    elevation: 15,
+    shadowColor: '#000',
+    shadowOpacity: 0.3,
+    shadowRadius: 15,
+    shadowOffset: { width: 5, height: 5 },
+    borderTopRightRadius: 20,
+    borderBottomRightRadius: 20,
+    paddingVertical: 8,
+    zIndex: 10,
+    maxHeight: '80%',
+  },
+  menuHeader: {
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  menuHeaderText: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    borderRadius: 0,
+  },
+  menuItemText: {
+    marginLeft: 16,
+    fontSize: 16,
+    flex: 1,
+    color: '#333',
+  },
+  menuNotificationBadge: {
+    backgroundColor: ERROR_COLOR,
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    marginRight: 8,
+    minWidth: 20,
+    alignItems: 'center',
+  },
+  menuNotificationText: {
+    color: 'white',
+    fontWeight: 'bold',
+    fontSize: 12,
+  },
+  menuDivider: {
+    height: 1,
+    backgroundColor: '#eee',
+    marginVertical: 8,
+    marginHorizontal: 20,
+  },
+  logoutItem: {
+    borderTopWidth: 1,
+    borderTopColor: '#eee',
+    marginTop: 8,
+  },
+
+  // SECTION CALENDRIER AMÉLIORÉE
+  calendarContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'white',
+    marginHorizontal: 16,
+    marginTop: 16,
+    padding: 16,
+    borderRadius: 12,
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+  },
+  calendarImageContainer: {
+    marginRight: 16,
+  },
+  calendarImage: {
+    width: 48,
+    height: 48,
+    resizeMode: 'contain',
+  },
+  dateContainer: {
+    flex: 1,
+  },
+  dateText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+  },
+  eventIndicator: {
+    fontSize: 14,
+    color: PRIMARY_COLOR,
+    fontWeight: '500',
+    marginTop: 4,
+  },
+
+  // BARRE DE RECHERCHE AMÉLIORÉE
+  searchContainer: {
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+  },
+  searchInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'white',
+    borderRadius: 25,
+    paddingHorizontal: 16,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+  },
+  searchIcon: {
+    marginRight: 8,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 16,
+    color: '#333',
+    paddingVertical: 12,
+  },
+  clearButton: {
+    padding: 4,
+  },
+
+  // CATÉGORIES AMÉLIORÉES
+  categoriesWrapper: {
+    paddingVertical: 8,
+    backgroundColor: 'transparent',
+  },
+  categoriesContent: {
+    paddingHorizontal: 16,
+  },
+  categoryItem: {
+    backgroundColor: 'white',
+    borderRadius: 25,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    marginRight: 12,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+  },
+  categoryActive: {
+    backgroundColor: PRIMARY_COLOR,
+    elevation: 4,
+    shadowOpacity: 0.2,
+  },
+  firstCategory: {
+    marginLeft: 0,
+  },
+  categoryText: {
+    fontSize: 14,
+    color: '#666',
+    fontWeight: '500',
+  },
+  categoryActiveText: {
+    color: 'white',
+    fontWeight: 'bold',
+  },
+
+  // CARTES PRODUIT AMÉLIORÉES
+  cardSingle: {
+    backgroundColor: 'white',
+    borderRadius: 16,
+    elevation: 6,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 5 },
+    overflow: 'hidden',
+  },
+  imageContainer: {
+    position: 'relative',
+    height: 200,
+  },
+  imageSingle: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
+  },
+  placeholderImage: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: '#f5f5f5',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  imageOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    height: 60,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)', // Noir semi-transparent
+  },
+  cardContent: {
+    padding: 16,
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+  },
+  titreSingle: {
+    flex: 1,
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+    lineHeight: 24,
+  },
+  acheteBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: SUCCESS_COLOR,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginLeft: 12,
+  },
+  acheteBadgeText: {
+    color: 'white',
+    fontWeight: 'bold',
+    fontSize: 10,
+    marginLeft: 4,
+  },
+
+  // SECTION PRIX AMÉLIORÉE
+  priceSection: {
+    marginBottom: 16,
+  },
+  promoPrice: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+  },
+  originalPrice: {
+    textDecorationLine: 'line-through',
+    color: '#999',
+    fontSize: 14,
+    marginRight: 8,
+  },
+  currentPrice: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: SUCCESS_COLOR,
+    marginRight: 8,
+  },
+  discountBadge: {
+    backgroundColor: ERROR_COLOR,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  discountText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  normalPrice: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+
+  // BOUTONS AMÉLIORÉS
+  startButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: SUCCESS_COLOR,
+    paddingVertical: 12,
+    borderRadius: 25,
+    marginBottom: 16,
+    elevation: 3,
+    shadowColor: SUCCESS_COLOR,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+  },
+  startButtonText: {
+    color: 'white',
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
+  buyButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: PRIMARY_COLOR,
+    paddingVertical: 12,
+    borderRadius: 25,
+    marginBottom: 16,
+    elevation: 3,
+    shadowColor: PRIMARY_COLOR,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+  },
+  buyButtonText: {
+    color: 'white',
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
+
+  // SECTION RÉACTIONS AMÉLIORÉE
+  reactionSection: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
+  },
+  reactionButton: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  likeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+    backgroundColor: 'rgba(244, 67, 54, 0.1)',
+  },
+  reactionIcon: {
+    marginRight: 4,
+  },
+  reactionCount: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#666',
+  },
+  commentButton: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  commentButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0,0,0,0.05)',
+  },
+  commentText: {
+    fontSize: 12,
+    color: '#666',
+    marginLeft: 4,
+    fontWeight: '500',
+  },
+  notificationBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    backgroundColor: ERROR_COLOR,
+    borderRadius: 10,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    minWidth: 18,
+    alignItems: 'center',
+  },
+  notificationBadgeText: {
+    color: 'white',
+    fontWeight: 'bold',
+    fontSize: 10,
+  },
+
+  // LOADER AMÉLIORÉ
+  loader: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: BACKGROUND_COLOR,
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: '#666',
+    fontWeight: '500',
+  },
+
+  // LISTE AMÉLIORÉE
+  listContainer: {
+    paddingBottom: 80,
+    paddingTop: 16,
+    paddingHorizontal: 16,
+  },
+  emptyContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 60,
+  },
+  emptyTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#333',
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  emptySubtitle: {
+    fontSize: 14,
+    color: '#666',
+    textAlign: 'center',
+    paddingHorizontal: 32,
+    lineHeight: 20,
+  },
+
+  // MODAL AMÉLIORÉE
+  modalContainer: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.8)',
+  },
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    padding: 20,
+  },
+  modalContent: {
+    backgroundColor: 'white',
+    borderRadius: 20,
+    maxHeight: '90%',
+    elevation: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.5,
+    shadowRadius: 20,
+  },
+  modalHeader: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    zIndex: 10,
+    padding: 16,
+  },
+  modalCloseButton: {
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    borderRadius: 20,
+    padding: 8,
+  },
+  modalImage: {
+    width: '100%',
+    height: 250,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+  },
+  modalPlaceholder: {
+    width: '100%',
+    height: 250,
+    backgroundColor: '#f5f5f5',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+  },
+  modalBody: {
+    padding: 24,
+  },
+  modalTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 16,
+    lineHeight: 30,
+  },
+  modalDescription: {
+    fontSize: 16,
+    color: '#666',
+    lineHeight: 24,
+    marginBottom: 24,
+  },
+  modalFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
+  },
+  modalPrice: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: PRIMARY_COLOR,
+  },
+  modalLoader: {
+    backgroundColor: 'white',
+    borderRadius: 20,
+    padding: 40,
+    alignItems: 'center',
+    elevation: 20,
+  },
+  modalLoadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: '#666',
+  },
+
+  // RUBAN ANIMÉ AMÉLIORÉ
+  ribbonContainer: {
+    position: 'absolute',
+    top: 20,
+    left: -10,
+    backgroundColor: ERROR_COLOR,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderTopRightRadius: 12,
+    borderBottomRightRadius: 12,
+    elevation: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    zIndex: 15,
+  },
+  ribbonText: {
+    color: 'white',
+    fontWeight: 'bold',
+    fontSize: 11,
+    textAlign: 'center',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+  },
+
+  // BADGE NOUVEAU AMÉLIORÉ
+  newBadge: {
+    position: 'absolute',
+    top: 16,
+    right: 16,
+    backgroundColor: '#9C27B0',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 15,
+    zIndex: 10,
+    elevation: 6,
+    shadowColor: '#9C27B0',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+  },
+  newBadgeText: {
+    color: 'white',
+    fontWeight: 'bold',
+    fontSize: 10,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+
+  // ÉVÉNEMENT AMÉLIORÉ
+  eventText: {
+    position: 'absolute',
+    top: 100,
+    left: 20,
+    right: 20,
+    zIndex: 999,
+    backgroundColor: 'rgba(255, 235, 59, 0.95)',
+    padding: 20,
+    borderWidth: 3,
+    borderColor: '#FF9800',
+    borderRadius: 15,
+    elevation: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.5,
+    shadowRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  eventTextContent: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: '#E65100',
+    textAlign: 'center',
+    fontFamily: 'serif',
+    textShadowColor: 'rgba(0,0,0,0.3)',
+    textShadowOffset: { width: 2, height: 2 },
+    textShadowRadius: 2,
+  },
+});
+function createFloatingRibbonStyles(theme: Theme): any {
+  throw new Error('Function not implemented.');
+}
